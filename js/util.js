@@ -141,8 +141,23 @@ export function confirmSheet(title, text, okLabel = 'Eliminar') {
   });
 }
 
+const blobToBase64 = (blob) => new Promise((resolve, reject) => {
+  const r = new FileReader();
+  r.onload = () => resolve(String(r.result).split(',')[1]);
+  r.onerror = () => reject(r.error);
+  r.readAsDataURL(blob);
+});
+
+export const isNativeApp = () => !!window.Capacitor?.isNativePlatform?.();
+
 // Comparte o descarga un archivo (en iPhone abre el menú de compartir).
 export async function saveFile(blob, name) {
+  if (isNativeApp()) {
+    const { Filesystem, Share } = window.Capacitor.Plugins;
+    const { uri } = await Filesystem.writeFile({ path: name, data: await blobToBase64(blob), directory: 'CACHE' });
+    try { await Share.share({ title: name, files: [uri] }); } catch (e) { if (!/cancel/i.test(e?.message || '')) throw e; }
+    return;
+  }
   const file = new File([blob], name, { type: blob.type });
   if (navigator.canShare?.({ files: [file] })) {
     try { await navigator.share({ files: [file], title: name }); return; } catch (e) { if (e.name === 'AbortError') return; }

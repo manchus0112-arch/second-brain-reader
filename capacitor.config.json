@@ -1,0 +1,9 @@
+{
+  "appId": "com.esteban.secondbrain",
+  "appName": "Second Brain",
+  "webDir": "dist",
+  "ios": {
+    "contentInset": "never",
+    "backgroundColor": "#f2f2f7"
+  }
+}

@@ -1,5 +1,5 @@
 // Ajustes: exportar, copias de seguridad, almacenamiento y ayuda.
-import { toast, saveFile, navBar, bindNav } from '../util.js';
+import { toast, saveFile, navBar, bindNav, isNativeApp } from '../util.js';
 import { db, requestPersistence } from '../db.js';
 import { exportVault, exportBackup, importBackup } from '../export.js';
 
@@ -11,7 +11,7 @@ export async function moreView(root) {
   let est = null;
   let persisted = false;
   try { est = await navigator.storage?.estimate?.(); persisted = await navigator.storage?.persisted?.(); } catch { /* no disponible */ }
-  const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone;
+  const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone || isNativeApp();
 
   root.innerHTML = `
     ${navBar({ title: 'Más' })}
