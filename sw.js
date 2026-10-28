@@ -1,5 +1,5 @@
 // Funciona sin conexión: guarda la app en caché y la actualiza en segundo plano.
-const CACHE = 'second-brain-v1';
+const CACHE = 'second-brain-v2';
 const FILES = [
   './',
   './index.html',
@@ -16,6 +16,7 @@ const FILES = [
   './js/util.js',
   './js/db.js',
   './js/markdown.js',
+  './js/brain.js',
   './js/highlights.js',
   './js/export.js',
   './js/epub-reader.js',

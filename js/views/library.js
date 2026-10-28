@@ -1,9 +1,10 @@
 // Biblioteca: importar libros, seguir leyendo, y ficha de cada libro.
-import { esc, icons, toast, fmtDate, snippet, confirmSheet, saveFile, safeFileName, COLORS } from '../util.js';
+import { esc, icons, toast, fmtDate, snippet, confirmSheet, saveFile, safeFileName, COLORS, navBar, bindNav } from '../util.js';
 import { db, addBook, deleteBook } from '../db.js';
 import { openHighlightSheet } from '../highlights.js';
 import { renderMarkdown } from '../markdown.js';
 import { bookToMarkdown } from '../export.js';
+import { conceptsOf } from '../brain.js';
 
 const hue = (s) => [...String(s)].reduce((a, c) => (a * 31 + c.charCodeAt(0)) % 360, 7);
 
@@ -81,8 +82,9 @@ export async function importFiles(files) {
   return added;
 }
 
+const FILE_INPUT = '<input type="file" accept=".epub,.pdf,application/epub+zip,application/pdf" multiple hidden>';
 function importButton(label = 'Importar libro') {
-  return `<label class="btn primary file-btn">${icons.plus}<span>${label}</span><input type="file" accept=".epub,.pdf,application/epub+zip,application/pdf" multiple hidden></label>`;
+  return `<label class="btn primary file-btn">${icons.plus}<span>${label}</span>${FILE_INPUT}</label>`;
 }
 
 export async function libraryView(root) {
@@ -93,7 +95,7 @@ export async function libraryView(root) {
   const memoBook = memo && books.find((b) => b.id === memo.bookId);
 
   root.innerHTML = `
-    <header class="page-head"><h1>Biblioteca</h1>${books.length ? importButton('Importar') : ''}</header>
+    ${navBar({ title: 'Biblioteca', actions: books.length ? `<label class="nav-btn" aria-label="Importar libro">${icons.plus}${FILE_INPUT}</label>` : '' })}
     ${!books.length ? `
       <div class="empty">
         <div class="empty-art">${icons.note}</div>
@@ -109,10 +111,9 @@ export async function libraryView(root) {
       </a>` : ''}
     ${memo ? `
       <a class="memo" href="#/read/${memo.bookId}/${memo.id}">
-        <div class="eyebrow">Para recordar</div>
+        <div class="eyebrow">Para recordar · ${esc(memoBook?.title || '')}</div>
         <blockquote style="--hl:${COLORS[memo.color]}">${esc(snippet(memo.text, 260))}</blockquote>
         ${memo.note ? `<div class="muted small">${esc(snippet(memo.note, 140))}</div>` : ''}
-        <div class="muted small">— ${esc(memoBook?.title || '')}</div>
       </a>` : ''}
     ${books.length ? `<h2 class="section">Libros <span class="muted">${books.length}</span></h2>
       <div class="book-grid">${books.map((b) => `
@@ -125,6 +126,7 @@ export async function libraryView(root) {
           </a>
         </div>`).join('')}</div>` : ''}`;
 
+  bindNav(root);
   root.querySelectorAll('input[type=file]').forEach((input) => {
     input.onchange = async () => {
       if (await importFiles([...input.files])) libraryView(root);
@@ -136,30 +138,37 @@ export async function bookView(root, id) {
   const book = await db.get('books', id);
   if (!book) { location.hash = '#/'; return; }
   const hls = (await db.byBook(id)).sort((a, b) => (a.page || 0) - (b.page || 0) || (a.start || 0) - (b.start || 0) || a.createdAt - b.createdAt);
+  const notes = await db.all('notes');
+  const conceptCount = new Map();
+  const perHl = new Map(hls.map((h) => [h.id, conceptsOf(h, notes)]));
+  for (const list of perHl.values()) for (const n of list) conceptCount.set(n.id, { n, k: (conceptCount.get(n.id)?.k || 0) + 1 });
+  const concepts = [...conceptCount.values()].sort((a, b) => b.k - a.k);
 
   root.innerHTML = `
-    <header class="page-head"><a class="icon-btn" href="#/">${icons.back}</a><span class="spacer"></span></header>
+    ${navBar({ title: book.title, back: { href: '#/', label: 'Biblioteca' }, large: false, actions: `<button class="nav-btn danger-text" data-delete aria-label="Eliminar libro">${icons.trash}</button>` })}
     <div class="book-hero">
       ${coverHtml(book)}
       <div>
-        <h1>${esc(book.title)}</h1>
+        <h1 class="large-title">${esc(book.title)}</h1>
         <p class="muted">${esc(book.author || '')}</p>
         <p class="muted small">${book.type.toUpperCase()} · añadido ${fmtDate(book.addedAt)} · ${Math.round((book.progress || 0) * 100)}% leído</p>
         <div class="row wrap">
           <a class="btn primary" href="#/read/${book.id}">Leer</a>
-          <button class="btn" data-export>Exportar subrayados</button>
-          <button class="btn ghost danger-text" data-delete>${icons.trash}</button>
+          <button class="btn" data-export>Exportar</button>
         </div>
       </div>
     </div>
+    ${concepts.length ? `<h2 class="section">Conceptos de este libro</h2><div class="chips">${concepts.map(({ n, k }) => `<a class="chip concept on" href="#/note/${n.id}">${esc(n.title)} <span>${k}</span></a>`).join('')}</div>` : ''}
     <h2 class="section">Subrayados <span class="muted">${hls.length}</span></h2>
     ${hls.length ? `<ul class="list">${hls.map((h) => `
       <li class="hl-item" data-id="${h.id}">
         <div class="hl-text" style="--hl:${COLORS[h.color]}">${esc(h.text)}</div>
         ${h.note ? `<div class="md small">${renderMarkdown(h.note)}</div>` : ''}
+        ${perHl.get(h.id).length ? `<div class="chips">${perHl.get(h.id).map((n) => `<a class="chip concept mini" href="#/note/${n.id}">${esc(n.title)}</a>`).join('')}</div>` : ''}
         <div class="row small"><a class="link" href="#/read/${book.id}/${h.id}">Ir al texto</a><button class="link" data-edit>Editar</button>${h.page ? `<span class="muted">pág. ${h.page}</span>` : ''}</div>
       </li>`).join('')}</ul>` : '<p class="muted">Aún no hay subrayados en este libro.</p>'}`;
 
+  bindNav(root);
   root.querySelector('.list')?.addEventListener('click', (e) => {
     if (!e.target.closest('[data-edit]')) return;
     const h = hls.find((x) => x.id === e.target.closest('[data-id]').dataset.id);

@@ -49,6 +49,19 @@ async function render() {
 }
 
 window.addEventListener('hashchange', render);
+
+// Deslizar desde el borde izquierdo para volver, como en iOS.
+let edge = null;
+document.addEventListener('touchstart', (e) => {
+  const t = e.touches[0];
+  edge = !document.body.classList.contains('reading') && t.clientX < 24 && location.hash.split('/').length > 2 ? { x: t.clientX, y: t.clientY } : null;
+}, { passive: true });
+document.addEventListener('touchend', (e) => {
+  if (!edge) return;
+  const t = e.changedTouches[0];
+  if (t.clientX - edge.x > 70 && Math.abs(t.clientY - edge.y) < 60) history.back();
+  edge = null;
+}, { passive: true });
 render();
 requestPersistence();
 

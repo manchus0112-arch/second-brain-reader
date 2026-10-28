@@ -1,6 +1,7 @@
 // Todo se guarda en el propio teléfono, en IndexedDB.
 // Almacenes: books (metadatos), files (el archivo del libro), highlights, notes.
-import { uid, norm, parseLinks, allTags } from './util.js';
+import { uid, norm, allTags } from './util.js';
+import { conceptsOf } from './brain.js';
 
 const DB_NAME = 'second-brain';
 const DB_VERSION = 1;
@@ -112,14 +113,13 @@ export async function getOrCreateNote(title) {
   return (await findNoteByTitle(title)) || saveNote({ title: title.trim(), body: '' });
 }
 
-// Todo lo que enlaza a una nota con [[título]]: otras notas y subrayados.
-export async function backlinks(title) {
-  const t = norm(title);
-  const links = (text) => parseLinks(text).some((l) => norm(l) === t);
+// Todo lo que está conectado a una nota: enlaces explícitos y menciones de su título.
+export async function backlinks(note) {
   const [notes, hls] = await Promise.all([db.all('notes'), db.all('highlights')]);
+  const hit = (item) => conceptsOf(item, [note]).length > 0;
   return {
-    notes: notes.filter((n) => norm(n.title) !== t && links(n.body)),
-    highlights: hls.filter((h) => links(h.note)),
+    notes: notes.filter((n) => n.id !== note.id && hit(n)),
+    highlights: hls.filter(hit),
   };
 }
 

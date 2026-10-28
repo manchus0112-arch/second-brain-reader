@@ -80,6 +80,28 @@ export function sheet(html, { onClose } = {}) {
     onClose?.();
   };
   wrap.querySelector('.sheet-backdrop').onclick = close;
+  window.addEventListener('hashchange', close, { once: true });
+  // Deslizar hacia abajo para cerrar, como en iOS.
+  const sh = wrap.querySelector('.sheet');
+  let y0 = null;
+  let dy = 0;
+  sh.addEventListener('touchstart', (e) => {
+    if (sh.scrollTop > 0 || e.target.closest('textarea, .chips.scroll')) return;
+    y0 = e.touches[0].clientY;
+    dy = 0;
+  }, { passive: true });
+  sh.addEventListener('touchmove', (e) => {
+    if (y0 == null) return;
+    dy = Math.max(0, e.touches[0].clientY - y0);
+    if (dy > 6) { sh.style.transition = 'none'; sh.style.transform = `translateY(${dy}px)`; }
+  }, { passive: true });
+  sh.addEventListener('touchend', () => {
+    if (y0 == null) return;
+    y0 = null;
+    sh.style.transition = '';
+    sh.style.transform = '';
+    if (dy > 90) close();
+  });
   return { el: wrap.querySelector('.sheet'), close };
 }
 
@@ -157,5 +179,56 @@ export const icons = {
   zoomIn: '<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3M8 11h6M11 8v6"/></svg>',
   zoomOut: '<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3M8 11h6"/></svg>',
   bulb: '<svg viewBox="0 0 24 24"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-4 10.5c.8.8 1 1.5 1 2.5h6c0-1 .2-1.7 1-2.5A6 6 0 0 0 12 3z"/></svg>',
+  search: '<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>',
   note: '<svg viewBox="0 0 24 24"><path d="M5 4h10l4 4v12H5z"/><path d="M9 12h6M9 16h4"/></svg>',
 };
+
+// Barra de navegación estilo iOS: título grande que se convierte en título pequeño al hacer scroll.
+export function navBar({ title = '', back = null, actions = '', large = true } = {}) {
+  return `<header class="nav">
+    <div class="nav-side">${back ? `<a class="nav-back" href="${back.href}">${icons.back}<span>${esc(back.label)}</span></a>` : ''}</div>
+    <div class="nav-title">${esc(title)}</div>
+    <div class="nav-side end">${actions}</div>
+  </header>${large && title ? `<h1 class="large-title">${esc(title)}</h1>` : ''}`;
+}
+
+export function bindNav(root) {
+  const nav = root.querySelector('.nav');
+  const h1 = root.querySelector('.large-title');
+  if (!nav) return;
+  if (!h1) { nav.classList.add('compact'); return; }
+  const io = new IntersectionObserver(([e]) => nav.classList.toggle('compact', !e.isIntersecting), { rootMargin: '-52px 0px 0px 0px' });
+  io.observe(h1);
+}
+
+// Enlaza automáticamente, dentro de un HTML ya pintado, las menciones de otros conceptos.
+export function autoLink(container, notes, selfId) {
+  const list = notes.filter((n) => n.id !== selfId && n.title && n.title.trim().length >= 3)
+    .sort((a, b) => b.title.length - a.title.length);
+  if (!list.length) return;
+  const done = new Set();
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, {
+    acceptNode: (n) => (n.parentElement.closest('a, code') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT),
+  });
+  const nodes = [];
+  while (walker.nextNode()) nodes.push(walker.currentNode);
+  for (const node of nodes) {
+    for (const n of list) {
+      if (done.has(n.id)) continue;
+      const t = n.title.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const re = new RegExp(`(^|[^\\p{L}\\p{N}])(${t})(?![\\p{L}\\p{N}])`, 'iu');
+      const m = node.data.match(re);
+      if (!m) continue;
+      const start = m.index + m[1].length;
+      const after = node.splitText(start);
+      after.splitText(m[2].length);
+      const a = document.createElement('a');
+      a.className = 'wikilink auto';
+      a.href = `#/note/${n.id}`;
+      a.textContent = after.data;
+      after.replaceWith(a);
+      done.add(n.id);
+      break;
+    }
+  }
+}

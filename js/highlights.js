@@ -1,15 +1,38 @@
-// Hoja para editar un subrayado y crear notas de concepto a partir de él.
-import { esc, sheet, toast, askText, confirmSheet, COLORS, QUICK_TAGS, parseLinks, norm } from './util.js';
-import { db, saveHighlight, saveNote, getOrCreateNote } from './db.js';
+// Hoja de un subrayado: nota, color, etiquetas y conceptos conectados.
+// Los conceptos se sugieren solos; un toque basta para conectar o crear uno.
+import { esc, sheet, toast, askText, confirmSheet, COLORS, QUICK_TAGS, snippet } from './util.js';
+import { db, saveHighlight, getOrCreateNote } from './db.js';
+import { Brain, conceptsOf, fold } from './brain.js';
 
 function tagChips(selected) {
   const all = [...new Set([...QUICK_TAGS, ...selected])];
   return all.map((t) => `<button type="button" class="chip ${selected.includes(t) ? 'on' : ''}" data-tag="${esc(t)}">#${esc(t)}</button>`).join('')
-    + '<button type="button" class="chip add" data-addtag>+ tag</button>';
+    + '<button type="button" class="chip add" data-addtag>+ etiqueta</button>';
+}
+
+export async function loadBrain() {
+  const [notes, hls] = await Promise.all([db.all('notes'), db.all('highlights')]);
+  return new Brain(notes, hls);
+}
+
+// Conecta un subrayado con un concepto (lo crea si no existe).
+export async function linkConcept(h, title) {
+  const note = await getOrCreateNote(title);
+  h.links = [...new Set([...(h.links || []), note.title])];
+  await saveHighlight(h);
+  return note;
+}
+
+// Tras subrayar: avisa con qué conceptos quedó conectado solo.
+export async function announceConnections(h) {
+  const notes = await db.all('notes');
+  const found = conceptsOf(h, notes);
+  if (found.length) toast(`Conectado con ${found.slice(0, 2).map((n) => `«${n.title}»`).join(' y ')}${found.length > 2 ? ` y ${found.length - 2} más` : ''}`);
+  return found;
 }
 
 // Abre la hoja de un subrayado. callbacks: onChange(h), onDelete(h), onGoto(h)
-export function openHighlightSheet(h, book, { onChange, onDelete, onGoto, focusNote = false } = {}) {
+export function openHighlightSheet(h, book, { onChange, onDelete, onGoto, focusNote = false, focusConcepts = false } = {}) {
   const tags = [...(h.tags || [])];
   let color = h.color || 'yellow';
   let dirty = false;
@@ -17,14 +40,18 @@ export function openHighlightSheet(h, book, { onChange, onDelete, onGoto, focusN
   const s = sheet(`
     <blockquote class="quote" style="--hl:${COLORS[color]}">${esc(h.text)}</blockquote>
     <p class="muted small">${esc(book?.title || '')}${h.page ? ` · pág. ${h.page}` : ''}</p>
+    <div class="sheet-label">Conceptos</div>
+    <div class="chips concepts" data-concepts><span class="muted small">Buscando…</span></div>
+    <div class="sheet-label">Tu nota</div>
+    <textarea class="input note-input" rows="3" placeholder="¿Qué te hace pensar?">${esc(h.note || '')}</textarea>
+    <div class="sheet-label">Color y etiquetas</div>
     <div class="row colors">${Object.entries(COLORS).map(([k, v]) => `<button type="button" class="swatch ${k === color ? 'on' : ''}" data-color="${k}" style="background:${v}" aria-label="${k}"></button>`).join('')}</div>
-    <textarea class="input note-input" rows="4" placeholder="Tu nota… usa [[concepto]] para enlazar y #tag para etiquetar">${esc(h.note || '')}</textarea>
     <div class="chips" data-tags>${tagChips(tags)}</div>
-    <div class="row wrap">
-      <button type="button" class="btn" data-concept>💡 Nota de concepto</button>
+    <div class="related" data-related></div>
+    <div class="row wrap sheet-actions">
       ${onGoto ? '<button type="button" class="btn" data-goto>Ir al texto</button>' : ''}
       <span class="spacer"></span>
-      <button type="button" class="btn ghost danger-text" data-delete>Eliminar</button>
+      <button type="button" class="btn plain danger-text" data-delete>Eliminar subrayado</button>
     </div>
   `, { onClose: () => save() });
 
@@ -40,6 +67,39 @@ export function openHighlightSheet(h, book, { onChange, onDelete, onGoto, focusN
     await saveHighlight(h);
     onChange?.(h);
   }
+
+  // Conceptos: conectados (rellenos) + sugeridos (con +)
+  const conceptsEl = el.querySelector('[data-concepts]');
+  async function drawConcepts() {
+    const brain = await loadBrain();
+    const linked = conceptsOf(h, brain.notes);
+    const linkedKeys = new Set(linked.map((n) => fold(n.title)));
+    const sugg = brain.suggest(`${h.text} ${textarea.value}`, 6).filter((x) => !linkedKeys.has(fold(x.title)));
+    conceptsEl.innerHTML = linked.map((n) => `<a class="chip concept on" href="#/note/${n.id}">${esc(n.title)}</a>`).join('')
+      + sugg.map((x) => `<button type="button" class="chip concept suggest" data-concept="${esc(x.title)}">+ ${esc(x.title)}</button>`).join('')
+      + '<button type="button" class="chip add" data-newconcept>Otro…</button>';
+    if (focusConcepts && !linked.length) conceptsEl.classList.add('pulse');
+
+    const rel = brain.related({ ...h, note: textarea.value }, 3).filter((r) => r.text);
+    const relEl = el.querySelector('[data-related]');
+    relEl.innerHTML = rel.length ? `<div class="sheet-label">Se parece a</div>${rel.map((r) => `<a class="mini-quote" href="#/read/${r.bookId}/${r.id}">${esc(snippet(r.text, 120))}</a>`).join('')}` : '';
+  }
+  drawConcepts();
+
+  conceptsEl.onclick = async (e) => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    let title = b.dataset.concept;
+    if (b.hasAttribute('data-newconcept')) {
+      title = await askText('Nuevo concepto', '', { placeholder: 'Nombre del concepto', ok: 'Conectar' });
+      if (!title) return;
+    }
+    await save();
+    const note = await linkConcept(h, title);
+    toast(`Conectado con «${note.title}»`);
+    onChange?.(h);
+    drawConcepts();
+  };
 
   el.querySelectorAll('[data-color]').forEach((b) => {
     b.onclick = () => {
@@ -67,11 +127,6 @@ export function openHighlightSheet(h, book, { onChange, onDelete, onGoto, focusN
     el.querySelector('[data-tags]').innerHTML = tagChips(tags);
   };
 
-  el.querySelector('[data-concept]').onclick = async () => {
-    await save();
-    const note = await conceptFromHighlight(h, book);
-    if (note) { textarea.value = h.note; onChange?.(h); }
-  };
   el.querySelector('[data-goto]')?.addEventListener('click', async () => { await save(); s.close(); onGoto(h); });
   el.querySelector('[data-delete]').onclick = async () => {
     if (!(await confirmSheet('¿Eliminar subrayado?', 'Se borrará el subrayado y su nota.'))) return;
@@ -84,21 +139,3 @@ export function openHighlightSheet(h, book, { onChange, onDelete, onGoto, focusN
   return s;
 }
 
-// Crea (o reutiliza) una nota con el nombre del concepto, le añade la cita
-// y enlaza el subrayado con [[concepto]].
-export async function conceptFromHighlight(h, book) {
-  const suggested = h.text.replace(/\s+/g, ' ').trim().slice(0, 60);
-  const title = await askText('Nota de concepto', suggested, { placeholder: 'Nombre del concepto', ok: 'Crear' });
-  if (!title) return null;
-  const note = await getOrCreateNote(title);
-  const quote = `> ${h.text.replace(/\s+/g, ' ').trim()}\n> — *${book?.title || 'Libro'}*${h.page ? `, pág. ${h.page}` : ''}`;
-  note.body = note.body ? `${note.body.trimEnd()}\n\n${quote}\n` : `${quote}\n`;
-  note.refs = [...new Set([...(note.refs || []), h.id])];
-  await saveNote(note);
-  if (!parseLinks(h.note).some((l) => norm(l) === norm(note.title))) {
-    h.note = h.note ? `${h.note.trimEnd()} [[${note.title}]]` : `[[${note.title}]]`;
-    await saveHighlight(h);
-  }
-  toast(`Nota «${note.title}» lista`, { label: 'Abrir', run: () => { location.hash = `#/note/${note.id}`; } });
-  return note;
-}

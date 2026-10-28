@@ -154,6 +154,7 @@ export async function createPdfReader(container, rec, data, highlights, cb) {
     const y = e.clientY - box.top;
     const hit = p.hlRects.find((r) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h);
     if (hit) cb.onHighlightTap(hit.id);
+    else cb.onTapCenter?.();
   }
   scroller.addEventListener('click', onClick);
 

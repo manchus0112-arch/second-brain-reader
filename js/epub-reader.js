@@ -2,7 +2,17 @@
 import { COLORS, debounce } from './util.js';
 import { updateBook } from './db.js';
 
-const isDark = () => matchMedia('(prefers-color-scheme: dark)').matches;
+const systemDark = () => matchMedia('(prefers-color-scheme: dark)').matches;
+export const resolveTheme = (t) => (!t || t === 'auto' ? (systemDark() ? 'dark' : 'light') : t);
+export const THEMES = {
+  light: { bg: '#ffffff', fg: '#1c1c1e', link: '#5856d6' },
+  sepia: { bg: '#f8f1e3', fg: '#5b4636', link: '#8a5a2b' },
+  dark: { bg: '#121212', fg: '#e5e5e7', link: '#a5a8ff' },
+};
+const FONTS = {
+  serif: '"Iowan Old Style", "Palatino", Georgia, serif',
+  sans: '-apple-system, "SF Pro Text", system-ui, sans-serif',
+};
 
 export async function createEpubReader(container, rec, data, highlights, cb) {
   const book = window.ePub(data);
@@ -16,13 +26,25 @@ export async function createEpubReader(container, rec, data, highlights, cb) {
     allowScriptedContent: false,
   });
 
-  const base = { 'line-height': '1.55 !important', 'font-family': 'Georgia, "Iowan Old Style", serif' };
-  rendition.themes.register('light', { body: { ...base, color: '#1f1d1a', background: '#fbf9f4' }, a: { color: '#4b4fc4' } });
-  rendition.themes.register('dark', { body: { ...base, color: '#e7e4dd', background: '#1a1a1c' }, a: { color: '#a5a8ff' } });
-  rendition.themes.select(isDark() ? 'dark' : 'light');
+  for (const [name, t] of Object.entries(THEMES)) {
+    rendition.themes.register(name, { body: { color: `${t.fg} !important`, background: `${t.bg} !important`, 'line-height': '1.6 !important' }, a: { color: `${t.link} !important` }, '::selection': { background: 'rgba(88, 86, 214, 0.3)' } });
+  }
+  let themeName = cb.prefs.theme || 'auto';
+  let current = resolveTheme(themeName);
+  const applyFont = (f) => rendition.themes.override('font-family', FONTS[f] || FONTS.serif, true);
+  applyFont(cb.prefs.font || 'serif');
+  rendition.themes.select(current);
+  const isDark = () => current === 'dark';
   const mq = matchMedia('(prefers-color-scheme: dark)');
-  const onScheme = () => rendition.themes.select(isDark() ? 'dark' : 'light');
+  const onScheme = () => { if (themeName === 'auto') setTheme('auto'); };
   mq.addEventListener?.('change', onScheme);
+  function setTheme(name) {
+    themeName = name;
+    current = resolveTheme(name);
+    rendition.themes.select(current);
+    highlights.forEach((h) => { remove(h); add(h); });
+    cb.onTheme?.(current);
+  }
 
   let fontSize = cb.prefs.fontSize || 100;
   rendition.themes.fontSize(`${fontSize}%`);
@@ -73,6 +95,7 @@ export async function createEpubReader(container, rec, data, highlights, cb) {
         const x = frame.left + t.clientX - box.left;
         if (x < box.width * 0.22) prev();
         else if (x > box.width * 0.78) next();
+        else cb.onTapCenter?.();
       }
     }, { passive: true });
     doc.addEventListener('keyup', onKey);
@@ -122,6 +145,8 @@ export async function createEpubReader(container, rec, data, highlights, cb) {
     toc: () => book.navigation.toc,
     goHref: (href) => rendition.display(href),
     clearSelection: () => rendition.getContents().forEach((c) => c.window.getSelection()?.removeAllRanges()),
+    setTheme,
+    setFont: applyFont,
     zoom(delta) {
       fontSize = Math.min(220, Math.max(70, fontSize + delta * 10));
       rendition.themes.fontSize(`${fontSize}%`);

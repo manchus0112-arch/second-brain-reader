@@ -1,5 +1,5 @@
 // Ajustes: exportar, copias de seguridad, almacenamiento y ayuda.
-import { toast, saveFile } from '../util.js';
+import { toast, saveFile, navBar, bindNav } from '../util.js';
 import { db, requestPersistence } from '../db.js';
 import { exportVault, exportBackup, importBackup } from '../export.js';
 
@@ -14,11 +14,11 @@ export async function moreView(root) {
   const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone;
 
   root.innerHTML = `
-    <header class="page-head"><h1>Más</h1></header>
+    ${navBar({ title: 'Más' })}
     <div class="stats">
       <div><b>${books.length}</b><span>libros</span></div>
       <div><b>${hls.length}</b><span>subrayados</span></div>
-      <div><b>${notes.length}</b><span>notas</span></div>
+      <div><b>${notes.length}</b><span>conceptos</span></div>
     </div>
 
     ${!standalone ? `<div class="card callout">
@@ -49,14 +49,15 @@ export async function moreView(root) {
 
     <h2 class="section">Cómo usarla</h2>
     <div class="card small help">
-      <p><b>Subrayar:</b> mientras lees, mantén el dedo sobre el texto para seleccionarlo y toca «Subrayar», «Nota» o «Concepto».</p>
-      <p><b>Concepto:</b> crea una nota con ese nombre, guarda la cita y enlaza el subrayado con ella.</p>
-      <p><b>Enlazar ideas:</b> escribe <code>[[nombre de una nota]]</code> en cualquier nota o subrayado. Si la nota no existe, se crea al tocar el enlace.</p>
-      <p><b>Etiquetas:</b> escribe <code>#etiqueta</code> o usa las etiquetas rápidas. Marca con <code>#research</code> lo que quieras investigar más adelante.</p>
-      <p><b>Pasar página:</b> desliza, toca los bordes o usa las flechas de abajo.</p>
+      <p><b>Subrayar:</b> mantén el dedo sobre el texto, ajusta la selección y toca «Subrayar». Si el texto menciona un concepto que ya tienes, queda conectado solo.</p>
+      <p><b>Conectar:</b> te sugiere conceptos a partir de lo que seleccionaste. Un toque y listo.</p>
+      <p><b>Cerebro:</b> los temas que se repiten en tus subrayados aparecen como sugerencias. Al convertirlos en concepto reúnen todo lo que has leído sobre ellos, de todos tus libros.</p>
+      <p><b>Leer cómodo:</b> desliza o toca los bordes para pasar página, toca el centro para ocultar las barras y usa «Aa» para el tema Sepia u Oscuro.</p>
+      <p><b>Para expertos:</b> en las notas también puedes escribir <code>[[concepto]]</code> y <code>#etiqueta</code>.</p>
     </div>
-    <p class="muted small center">Second Brain · v1</p>`;
+    <p class="muted small center">Second Brain · v2</p>`;
 
+  bindNav(root);
   const busy = async (btn, fn) => {
     const label = btn.textContent;
     btn.disabled = true;

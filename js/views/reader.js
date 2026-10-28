@@ -1,7 +1,8 @@
 // Pantalla de lectura: barra superior, libro, barra de selección y paneles.
 import { esc, sheet, icons, toast, COLORS, snippet } from '../util.js';
 import { db, getBookData, saveHighlight } from '../db.js';
-import { openHighlightSheet, conceptFromHighlight } from '../highlights.js';
+import { openHighlightSheet, announceConnections } from '../highlights.js';
+import { THEMES, resolveTheme } from '../epub-reader.js';
 
 const PREFS_KEY = 'reader-prefs';
 function loadPrefs() { try { return JSON.parse(localStorage.getItem(PREFS_KEY)) || {}; } catch { return {}; } }
@@ -17,7 +18,7 @@ export async function readerView(root, bookId, targetId) {
 
   document.body.classList.add('reading');
   root.innerHTML = `
-    <div class="reader">
+    <div class="reader" data-theme="${book.type === 'epub' ? resolveTheme(prefs.theme) : ''}">
       <header class="reader-top">
         <a class="icon-btn" href="#/book/${book.id}" aria-label="Volver">${icons.back}</a>
         <div class="reader-title">${esc(book.title)}</div>
@@ -34,10 +35,11 @@ export async function readerView(root, bookId, targetId) {
       <div class="selbar" hidden>
         <button data-act="highlight"><span class="dot" style="background:${COLORS.yellow}"></span>Subrayar</button>
         <button data-act="note">${icons.note}Nota</button>
-        <button data-act="concept">${icons.bulb}Concepto</button>
+        <button data-act="concept">${icons.bulb}Conectar</button>
       </div>
     </div>`;
 
+  const readerEl = root.querySelector('.reader');
   const body = root.querySelector('.reader-body');
   const selbar = root.querySelector('.selbar');
   const progressEl = root.querySelector('.reader-progress');
@@ -47,8 +49,8 @@ export async function readerView(root, bookId, targetId) {
   let hideTimer;
   let engine;
 
-  const openSheet = (h, focusNote = false) => openHighlightSheet(h, book, {
-    focusNote,
+  const openSheet = (h, opts = {}) => openHighlightSheet(h, book, {
+    ...opts,
     onChange: (x) => engine.update(x),
     onDelete: (x) => {
       const i = highlights.findIndex((y) => y.id === x.id);
@@ -72,6 +74,8 @@ export async function readerView(root, bookId, targetId) {
       if (h) openSheet(h);
     },
     onProgress(text) { progressEl.textContent = text; },
+    onTapCenter() { readerEl.classList.toggle('immersive'); },
+    onTheme(t) { readerEl.dataset.theme = t; },
   };
 
   try {
@@ -95,9 +99,9 @@ export async function readerView(root, bookId, targetId) {
     engine.clearSelection();
     selection = null;
     selbar.hidden = true;
-    if (b.dataset.act === 'note') openSheet(h, true);
-    else if (b.dataset.act === 'concept') { await conceptFromHighlight(h, book); engine.update(h); }
-    else toast('Subrayado guardado');
+    if (b.dataset.act === 'note') openSheet(h, { focusNote: true });
+    else if (b.dataset.act === 'concept') openSheet(h, { focusConcepts: true });
+    else if (!(await announceConnections(h)).length) toast('Subrayado guardado');
   };
 
   root.querySelector('[data-prev]').onclick = () => engine.prev();
@@ -135,16 +139,37 @@ export async function readerView(root, bookId, targetId) {
   root.querySelector('[data-size]').onclick = () => {
     const isPdf = book.type === 'pdf';
     const label = () => (isPdf ? `${Math.round((prefs.pdfZoom || 1) * 100)}%` : `${prefs.fontSize || 100}%`);
+    const themeBtn = (k, name) => {
+      const t = THEMES[k] || { bg: 'linear-gradient(135deg,#fff 50%,#121212 50%)', fg: '#888' };
+      return `<button class="theme-dot ${(prefs.theme || 'auto') === k ? 'on' : ''}" data-theme="${k}" style="background:${t.bg};color:${t.fg}"><span>Aa</span><small>${name}</small></button>`;
+    };
     const s = sheet(`
-      <h3>${isPdf ? 'Zoom' : 'Tamaño de letra'}</h3>
-      <div class="row center"><button class="btn" data-d="-1">−</button><span class="size-label">${label()}</span><button class="btn" data-d="1">+</button></div>`);
+      <h3>${isPdf ? 'Zoom' : 'Apariencia'}</h3>
+      <div class="stepper"><button data-d="-1" aria-label="Más pequeño">${isPdf ? '−' : '<span style="font-size:14px">A</span>'}</button><span class="size-label">${label()}</span><button data-d="1" aria-label="Más grande">${isPdf ? '+' : '<span style="font-size:22px">A</span>'}</button></div>
+      ${isPdf ? '' : `
+        <div class="sheet-label">Tema</div>
+        <div class="theme-row">${themeBtn('auto', 'Auto')}${themeBtn('light', 'Claro')}${themeBtn('sepia', 'Sepia')}${themeBtn('dark', 'Oscuro')}</div>
+        <div class="sheet-label">Letra</div>
+        <div class="segmented"><a href="javascript:void 0" data-font="serif" class="${(prefs.font || 'serif') === 'serif' ? 'on' : ''}" style="font-family:Georgia,serif">Clásica</a><a href="javascript:void 0" data-font="sans" class="${prefs.font === 'sans' ? 'on' : ''}">Moderna</a></div>`}`);
     s.el.onclick = (e) => {
-      const b = e.target.closest('[data-d]');
-      if (!b) return;
-      const v = engine.zoom(Number(b.dataset.d));
-      if (isPdf) prefs.pdfZoom = v / 100; else prefs.fontSize = v;
+      const d = e.target.closest('[data-d]');
+      const th = e.target.closest('[data-theme]');
+      const f = e.target.closest('[data-font]');
+      if (d) {
+        const v = engine.zoom(Number(d.dataset.d));
+        if (isPdf) prefs.pdfZoom = v / 100; else prefs.fontSize = v;
+        s.el.querySelector('.size-label').textContent = label();
+      } else if (th) {
+        prefs.theme = th.dataset.theme;
+        engine.setTheme(prefs.theme);
+        s.el.querySelectorAll('[data-theme]').forEach((x) => x.classList.toggle('on', x === th));
+      } else if (f) {
+        e.preventDefault();
+        prefs.font = f.dataset.font;
+        engine.setFont(prefs.font);
+        s.el.querySelectorAll('[data-font]').forEach((x) => x.classList.toggle('on', x === f));
+      } else return;
       savePrefs(prefs);
-      s.el.querySelector('.size-label').textContent = label();
     };
   };
 

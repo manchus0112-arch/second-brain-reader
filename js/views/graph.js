@@ -1,5 +1,6 @@
 // Grafo del second brain: notas y libros conectados por [[enlaces]].
-import { parseLinks, norm, snippet } from '../util.js';
+import { parseLinks, norm, snippet, navBar, bindNav } from '../util.js';
+import { conceptsOf } from '../brain.js';
 import { db } from '../db.js';
 
 async function buildGraph() {
@@ -21,6 +22,7 @@ async function buildGraph() {
   const bookIds = new Set(hls.map((h) => h.bookId));
   for (const b of books) if (bookIds.has(b.id)) node(`b:${b.id}`, { kind: 'book', label: b.title, href: `#/book/${b.id}` });
   for (const n of notes) {
+    for (const c of conceptsOf(n, notes)) link(`n:${n.id}`, `n:${c.id}`);
     for (const t of parseLinks(n.body)) link(`n:${n.id}`, target(t));
     for (const ref of n.refs || []) {
       const h = hls.find((x) => x.id === ref);
@@ -29,6 +31,7 @@ async function buildGraph() {
   }
   for (const h of hls) {
     if (!nodes.has(`b:${h.bookId}`)) continue;
+    for (const c of conceptsOf(h, notes)) link(`b:${h.bookId}`, `n:${c.id}`);
     for (const t of parseLinks(h.note)) link(`b:${h.bookId}`, target(t));
   }
   // los libros sin conexiones no aportan nada al grafo
@@ -39,9 +42,11 @@ async function buildGraph() {
 export async function graphView(root) {
   const { nodes, edges } = await buildGraph();
   root.innerHTML = `
-    <header class="page-head"><h1>Grafo</h1><span class="muted small">${nodes.length} nodos · ${edges.length} enlaces</span></header>
+    ${navBar({ title: 'Grafo' })}
+    <p class="muted small subtitle">${nodes.length} conceptos y libros · ${edges.length} conexiones</p>
     ${nodes.length ? '<div class="graph-wrap"><canvas></canvas><div class="graph-legend small"><span class="lg note"></span>Nota <span class="lg book"></span>Libro <span class="lg ghost"></span>Por crear</div></div>'
-      : '<div class="empty"><p class="muted">Aquí verás cómo se conectan tus ideas. Crea notas y enlázalas con [[concepto]], o usa «Concepto» al subrayar.</p></div>'}`;
+      : '<div class="empty"><p class="muted">Aquí verás cómo se conectan tus ideas. Subraya mientras lees y convierte en concepto los temas que se repiten: las conexiones aparecen solas.</p></div>'}`;
+  bindNav(root);
   if (!nodes.length) return;
 
   const wrap = root.querySelector('.graph-wrap');
