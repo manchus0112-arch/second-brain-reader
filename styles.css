@@ -360,3 +360,10 @@ textarea.input { resize: none; line-height: 1.45; }
 .textLayer span.markedContent { top: 0; height: 0; }
 .textLayer ::selection { background: rgb(88 86 214 / 0.3); }
 .textLayer br::selection { background: transparent; }
+.pdf-page.ocr-busy::after {
+  content: "Reconociendo texto…"; position: absolute; top: 10px; left: 50%; transform: translateX(-50%); z-index: 3;
+  background: rgb(30 30 32 / 0.85); color: #fff; font-size: 13px; font-weight: 600; padding: 6px 12px; border-radius: 999px;
+  animation: ocr-pulse 1.4s ease-in-out infinite;
+}
+@keyframes ocr-pulse { 50% { opacity: 0.55; } }
+.textLayer.ocr span { font-family: sans-serif; line-height: 1; }

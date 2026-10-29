@@ -3,6 +3,7 @@
 // Un subrayado de PDF se guarda como { page, start, end }: posiciones dentro del texto de la página.
 import { COLORS, debounce } from './util.js';
 import { updateBook } from './db.js';
+import { looksScanned, getCachedOcr, recognizePage, buildOcrLayer } from './ocr.js';
 
 let pdfjsPromise;
 function loadPdfjs() {
@@ -101,10 +102,29 @@ export async function createPdfReader(container, rec, data, highlights, cb) {
       const textLayer = new pdfjs.TextLayer({ textContentSource: page.streamTextContent(), container: tl, viewport: vp });
       await Promise.all([p.task.promise, textLayer.render()]);
       p.task = null;
+      if (looksScanned(tl)) await ocrPage(p, page, vp);
       paint(p);
     } catch (e) {
       if (e?.name !== 'RenderingCancelledException') console.warn('pdf page', e);
     }
+  }
+
+  // Página escaneada: usa el texto reconocido guardado o lo reconoce ahora.
+  async function ocrPage(p, page, vp) {
+    const tl = p.el.querySelector('.textLayer');
+    let ocr = await getCachedOcr(rec.id, p.n);
+    if (!ocr) {
+      p.el.classList.add('ocr-busy');
+      try {
+        ocr = await recognizePage(rec.id, page);
+      } catch (e) {
+        console.warn('ocr', e);
+      } finally {
+        p.el.classList.remove('ocr-busy');
+      }
+      if (!p.rendered || !ocr) return;
+    }
+    buildOcrLayer(tl, ocr, vp.width, vp.height);
   }
 
   function releasePage(p) {

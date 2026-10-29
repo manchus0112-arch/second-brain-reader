@@ -4,7 +4,7 @@ import { uid, norm, allTags } from './util.js';
 import { conceptsOf } from './brain.js';
 
 const DB_NAME = 'second-brain';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 let dbPromise;
 
 function open() {
@@ -12,10 +12,13 @@ function open() {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
     req.onupgradeneeded = () => {
       const db = req.result;
-      db.createObjectStore('books', { keyPath: 'id' });
-      db.createObjectStore('files', { keyPath: 'id' });
-      db.createObjectStore('highlights', { keyPath: 'id' }).createIndex('bookId', 'bookId');
-      db.createObjectStore('notes', { keyPath: 'id' });
+      const has = (n) => db.objectStoreNames.contains(n);
+      if (!has('books')) db.createObjectStore('books', { keyPath: 'id' });
+      if (!has('files')) db.createObjectStore('files', { keyPath: 'id' });
+      if (!has('highlights')) db.createObjectStore('highlights', { keyPath: 'id' }).createIndex('bookId', 'bookId');
+      if (!has('notes')) db.createObjectStore('notes', { keyPath: 'id' });
+      // texto reconocido (OCR) de páginas escaneadas
+      if (!has('ocr')) db.createObjectStore('ocr', { keyPath: 'id' }).createIndex('bookId', 'bookId');
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
@@ -70,7 +73,8 @@ export async function updateBook(id, patch) {
 
 export async function deleteBook(id) {
   const hls = await db.byBook(id);
-  await tx(['books', 'files', 'highlights'], 'readwrite', (t) => {
+  await tx(['books', 'files', 'highlights', 'ocr'], 'readwrite', (t) => {
+    t.objectStore('ocr').delete(IDBKeyRange.bound(`${id}:`, `${id}:\uffff`));
     t.objectStore('books').delete(id);
     t.objectStore('files').delete(id);
     for (const h of hls) t.objectStore('highlights').delete(h.id);
