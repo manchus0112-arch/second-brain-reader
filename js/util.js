@@ -68,13 +68,18 @@ export function toast(msg, action) {
 export function sheet(html, { onClose } = {}) {
   const wrap = document.createElement('div');
   wrap.className = 'sheet-wrap';
-  wrap.innerHTML = `<div class="sheet-backdrop"></div><div class="sheet" role="dialog" aria-modal="true"><div class="sheet-grip"></div>${html}</div>`;
+  wrap.innerHTML = `<div class="sheet-backdrop"></div><div class="sheet" role="dialog" aria-modal="true" tabindex="-1"><div class="sheet-grip"></div>${html}</div>`;
+  const opener = document.activeElement;
   document.body.appendChild(wrap);
-  requestAnimationFrame(() => wrap.classList.add('open'));
+  requestAnimationFrame(() => { wrap.classList.add('open'); wrap.querySelector('.sheet').focus({ preventScroll: true }); });
+  const onKey = (e) => { if (e.key === 'Escape') close(); };
+  document.addEventListener('keydown', onKey);
   let closed = false;
   const close = () => {
     if (closed) return;
     closed = true;
+    document.removeEventListener('keydown', onKey);
+    opener?.focus?.({ preventScroll: true });
     wrap.classList.remove('open');
     setTimeout(() => wrap.remove(), 250);
     onClose?.();
@@ -112,7 +117,7 @@ export function askText(title, value = '', { placeholder = '', ok = 'Aceptar' } 
     const s = sheet(`
       <h3>${esc(title)}</h3>
       <form class="stack">
-        <input class="input" name="v" value="${esc(value)}" placeholder="${esc(placeholder)}" autocomplete="off">
+        <input class="input" name="v" value="${esc(value)}" placeholder="${esc(placeholder)}" aria-label="${esc(title)}" autocomplete="off">
         <div class="row end"><button type="button" class="btn ghost" data-cancel>Cancelar</button><button class="btn primary">${esc(ok)}</button></div>
       </form>`, { onClose: () => { if (!done) resolve(null); } });
     const input = s.el.querySelector('input');

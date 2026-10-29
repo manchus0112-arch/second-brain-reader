@@ -1,5 +1,5 @@
 // Funciona sin conexión: guarda la app en caché y la actualiza en segundo plano.
-const CACHE = 'second-brain-v3';
+const CACHE = 'second-brain-v4';
 const FILES = [
   './',
   './index.html',

@@ -10,7 +10,7 @@ let lastQuery = '';
 export async function searchView(root) {
   root.innerHTML = `
     ${navBar({ title: 'Buscar' })}
-    <div class="searchfield">${icons.search}<input type="search" placeholder="Libros, conceptos y subrayados" value="${esc(lastQuery)}" autocomplete="off"></div>
+    <div class="searchfield">${icons.search}<input type="search" placeholder="Libros, conceptos y subrayados" aria-label="Buscar" value="${esc(lastQuery)}" autocomplete="off"></div>
     <div class="results"></div>`;
   bindNav(root);
   const input = root.querySelector('input');

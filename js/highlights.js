@@ -24,10 +24,14 @@ export async function linkConcept(h, title) {
 }
 
 // Tras subrayar: avisa con qué conceptos quedó conectado solo.
-export async function announceConnections(h) {
+// Tras subrayar: confirma, dice con qué conceptos quedó conectado y ofrece deshacer.
+export async function announceConnections(h, undo) {
   const notes = await db.all('notes');
   const found = conceptsOf(h, notes);
-  if (found.length) toast(`Conectado con ${found.slice(0, 2).map((n) => `«${n.title}»`).join(' y ')}${found.length > 2 ? ` y ${found.length - 2} más` : ''}`);
+  const msg = found.length
+    ? `Conectado con ${found.slice(0, 2).map((n) => `«${n.title}»`).join(' y ')}${found.length > 2 ? ` y ${found.length - 2} más` : ''}`
+    : 'Subrayado guardado';
+  toast(msg, undo ? { label: 'Deshacer', run: undo } : undefined);
   return found;
 }
 
@@ -43,7 +47,7 @@ export function openHighlightSheet(h, book, { onChange, onDelete, onGoto, focusN
     <div class="sheet-label">Conceptos</div>
     <div class="chips concepts" data-concepts><span class="muted small">Buscando…</span></div>
     <div class="sheet-label">Tu nota</div>
-    <textarea class="input note-input" rows="3" placeholder="¿Qué te hace pensar?">${esc(h.note || '')}</textarea>
+    <textarea class="input note-input" rows="3" aria-label="Tu nota" placeholder="¿Qué te hace pensar?">${esc(h.note || '')}</textarea>
     <div class="sheet-label">Color y etiquetas</div>
     <div class="row colors">${Object.entries(COLORS).map(([k, v]) => `<button type="button" class="swatch ${k === color ? 'on' : ''}" data-color="${k}" style="background:${v}" aria-label="${k}"></button>`).join('')}</div>
     <div class="chips" data-tags>${tagChips(tags)}</div>

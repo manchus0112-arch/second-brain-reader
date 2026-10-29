@@ -84,8 +84,24 @@ export async function readerView(root, bookId, targetId) {
     engine = await (book.type === 'pdf' ? mod.createPdfReader : mod.createEpubReader)(body, book, data, highlights, cb);
   } catch (e) {
     console.error(e);
-    body.innerHTML = `<div class="empty"><p>No se pudo abrir este libro.</p><p class="muted small">${esc(e.message || e)}</p></div>`;
+    body.innerHTML = `<div class="empty"><h2>No se pudo abrir este libro</h2><p class="muted">Puede que el archivo esté dañado o protegido (los libros comprados en Kindle o Apple Books suelen tener protección). Prueba a importarlo de nuevo o con otra copia.</p><p class="muted small">Detalle: ${esc(e.message || e)}</p></div>`;
     return () => document.body.classList.remove('reading');
+  }
+
+  // Pista la primera vez que se abre un libro.
+  const COACH = 'coach-reader-v1';
+  let coachSeen = true;
+  try { coachSeen = !!localStorage.getItem(COACH); } catch { /* sin almacenamiento */ }
+  if (!coachSeen) {
+    const coach = document.createElement('div');
+    coach.className = 'coach';
+    coach.setAttribute('role', 'note');
+    coach.innerHTML = `<div><b>Para subrayar</b>Mantén el dedo sobre una palabra, ajusta la selección y toca «Subrayar». Toca el centro de la página para ocultar las barras.</div><button type="button">Entendido</button>`;
+    readerEl.appendChild(coach);
+    const dismiss = () => { coach.remove(); try { localStorage.setItem(COACH, '1'); } catch { /* sin almacenamiento */ } };
+    coach.querySelector('button').onclick = dismiss;
+    const onSelect = cb.onSelect;
+    cb.onSelect = (sel) => { if (sel && coach.isConnected) dismiss(); onSelect(sel); };
   }
 
   selbar.onclick = async (e) => {
@@ -101,7 +117,15 @@ export async function readerView(root, bookId, targetId) {
     selbar.hidden = true;
     if (b.dataset.act === 'note') openSheet(h, { focusNote: true });
     else if (b.dataset.act === 'concept') openSheet(h, { focusConcepts: true });
-    else if (!(await announceConnections(h)).length) toast('Subrayado guardado');
+    else {
+      await announceConnections(h, async () => {
+        await db.del('highlights', h.id);
+        const i = highlights.findIndex((y) => y.id === h.id);
+        if (i >= 0) highlights.splice(i, 1);
+        engine.remove(h);
+        toast('Subrayado eliminado');
+      });
+    }
   };
 
   root.querySelector('[data-prev]').onclick = () => engine.prev();

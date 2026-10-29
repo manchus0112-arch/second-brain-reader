@@ -44,7 +44,7 @@ export async function graphView(root) {
   root.innerHTML = `
     ${navBar({ title: 'Grafo' })}
     <p class="muted small subtitle">${nodes.length} conceptos y libros · ${edges.length} conexiones</p>
-    ${nodes.length ? '<div class="graph-wrap"><canvas></canvas><div class="graph-legend small"><span class="lg note"></span>Nota <span class="lg book"></span>Libro <span class="lg ghost"></span>Por crear</div></div>'
+    ${nodes.length ? '<div class="graph-wrap"><canvas role="img" aria-label="Grafo de conceptos y libros conectados"></canvas><div class="graph-legend small"><span class="lg note"></span>Nota <span class="lg book"></span>Libro <span class="lg ghost"></span>Por crear</div></div>'
       : '<div class="empty"><p class="muted">Aquí verás cómo se conectan tus ideas. Subraya mientras lees y convierte en concepto los temas que se repiten: las conexiones aparecen solas.</p></div>'}`;
   bindNav(root);
   if (!nodes.length) return;

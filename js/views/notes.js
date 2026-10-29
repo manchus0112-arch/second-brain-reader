@@ -38,7 +38,7 @@ export async function notesView(root, tab = lastTab) {
   lastTab = tab;
   root.innerHTML = `
     ${navBar({ title: 'Cerebro', actions: `<button class="nav-btn" data-new aria-label="Nuevo concepto">${icons.plus}</button>` })}
-    <div class="searchfield">${icons.search}<input type="search" placeholder="Buscar" autocomplete="off"></div>
+    <div class="searchfield">${icons.search}<input type="search" placeholder="Buscar" aria-label="Buscar en el cerebro" autocomplete="off"></div>
     <div class="segmented">${TABS.map(([k, l]) => `<a href="#/notes/${k}" class="${k === tab ? 'on' : ''}">${l}</a>`).join('')}</div>
     <div class="results"></div>`;
   bindNav(root);
@@ -122,9 +122,9 @@ export async function noteView(root, id, mode) {
   root.innerHTML = `
     ${navBar({ title: note.title, back: { href: '#/notes', label: 'Cerebro' }, large: false, actions: `<button class="nav-btn text" data-toggle></button><button class="nav-btn" data-delete aria-label="Eliminar">${icons.trash}</button>` })}
     <article class="note">
-      <input class="note-title large-title" value="${esc(note.title)}" placeholder="Título">
+      <input class="note-title large-title" value="${esc(note.title)}" placeholder="Título" aria-label="Nombre del concepto">
       <div class="note-meta muted small"></div>
-      <textarea class="note-body input" placeholder="Tus ideas sobre este concepto… (opcional: lo que subrayes sobre él aparece abajo solo)"></textarea>
+      <textarea class="note-body input" aria-label="Tus ideas sobre este concepto" placeholder="Tus ideas sobre este concepto… (opcional: lo que subrayes sobre él aparece abajo solo)"></textarea>
       <div class="note-rendered md"></div>
       <div class="chips" data-tags></div>
     </article>
